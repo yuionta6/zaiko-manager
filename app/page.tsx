@@ -27,9 +27,13 @@ export default function Home() {
   // 0. 認証状態を監視 + リダイレクト結果を受け取る
   useEffect(() => {
     getRedirectResult(auth).catch((err) => console.error(err));
-    const unsub = onAuthStateChanged(auth, (u) => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       setAuthLoading(false);
+      if (u) {
+        const token = await u.getIdTokenResult();
+        console.log("[認証情報] email:", u.email, " token.email:", token.claims.email);
+      }
     });
     return () => unsub();
   }, []);
@@ -74,16 +78,21 @@ export default function Home() {
   const addItem = async (e: React.FormEvent) => {
     e.preventDefault(); // ページのリロードを防ぐ
     if (newName !== "") {
-      await addDoc(collection(db, "items"), {
-        name: newName,
-        stock: newStock === "" ? 1 : newStock,
-        price: newPrice === "" ? null : newPrice,
-        category: newCategory,
-      });
-      setNewName(""); // 入力欄を空にする
-      setNewStock(1);
-      setNewPrice("");
-      setNewCategory(activeTab);
+      try {
+        await addDoc(collection(db, "items"), {
+          name: newName,
+          stock: newStock === "" ? 1 : newStock,
+          price: newPrice === "" ? null : newPrice,
+          category: newCategory,
+        });
+        setNewName(""); // 入力欄を空にする
+        setNewStock(1);
+        setNewPrice("");
+        setNewCategory(activeTab);
+      } catch (err: any) {
+        console.error("追加エラー:", err);
+        alert(`追加に失敗しました: ${err?.message ?? err}`);
+      }
     }
   };
 
@@ -91,15 +100,25 @@ export default function Home() {
   const changeStock = async (id: string, currentStock: number, delta: number) => {
     const newVal = currentStock + delta;
     if (newVal >= 0) {
-      const itemRef = doc(db, "items", id);
-      await updateDoc(itemRef, { stock: newVal });
+      try {
+        const itemRef = doc(db, "items", id);
+        await updateDoc(itemRef, { stock: newVal });
+      } catch (err: any) {
+        console.error("在庫更新エラー:", err);
+        alert(`在庫更新に失敗しました: ${err?.message ?? err}`);
+      }
     }
   };
 
   // 4. アイテムを削除する
   const deleteItem = async (id: string) => {
     if (confirm("本当に削除しますか？")) {
-      await deleteDoc(doc(db, "items", id));
+      try {
+        await deleteDoc(doc(db, "items", id));
+      } catch (err: any) {
+        console.error("削除エラー:", err);
+        alert(`削除に失敗しました: ${err?.message ?? err}`);
+      }
     }
   };
 
@@ -119,14 +138,19 @@ export default function Home() {
   };
 
   const saveEdit = async (id: string) => {
-    const itemRef = doc(db, "items", id);
-    await updateDoc(itemRef, {
-      name: editName,
-      stock: editStock === "" ? 0 : editStock,
-      price: editPrice === "" ? null : editPrice,
-      category: editCategory,
-    });
-    setEditingId(null);
+    try {
+      const itemRef = doc(db, "items", id);
+      await updateDoc(itemRef, {
+        name: editName,
+        stock: editStock === "" ? 0 : editStock,
+        price: editPrice === "" ? null : editPrice,
+        category: editCategory,
+      });
+      setEditingId(null);
+    } catch (err: any) {
+      console.error("保存エラー:", err);
+      alert(`保存に失敗しました: ${err?.message ?? err}`);
+    }
   };
 
   // --- 認証チェック中 ---
