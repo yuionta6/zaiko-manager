@@ -1,9 +1,12 @@
 "use client";
 import { useState, useEffect } from "react";
-import { db } from "@/lib/firebase";
+import { db, auth, googleProvider } from "@/lib/firebase";
 import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc } from "firebase/firestore";
+import { onAuthStateChanged, signInWithPopup, signOut, User } from "firebase/auth";
 
 export default function Home() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [items, setItems] = useState<any[]>([]);
   // 入力フォーム用の状態
   const [newName, setNewName] = useState("");
@@ -14,8 +17,36 @@ export default function Home() {
 
   const categories = ["キッチン", "掃除", "化粧品", "ベビー", "食品"];
 
-  // 1. データのリアルタイム取得
+  // 0. 認証状態を監視
   useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setAuthLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  // ログイン
+  const login = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      console.error(err);
+      alert("ログインに失敗しました");
+    }
+  };
+
+  // ログアウト
+  const logout = async () => {
+    await signOut(auth);
+  };
+
+  // 1. データのリアルタイム取得（ログイン後のみ）
+  useEffect(() => {
+    if (!user) {
+      setItems([]);
+      return;
+    }
     const unsub = onSnapshot(collection(db, "items"), (snapshot) => {
       const data = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -24,7 +55,7 @@ export default function Home() {
       setItems(data);
     });
     return () => unsub();
-  }, []);
+  }, [user]);
 
   // 2. 新しいアイテムをFirebaseに追加
   const addItem = async (e: React.FormEvent) => {
@@ -85,8 +116,48 @@ export default function Home() {
     setEditingId(null);
   };
 
+  // --- 認証チェック中 ---
+  if (authLoading) {
+    return (
+      <main style={{ padding: "40px", textAlign: "center", fontFamily: "sans-serif" }}>
+        <p>読み込み中...</p>
+      </main>
+    );
+  }
+
+  // --- 未ログイン時の画面 ---
+  if (!user) {
+    return (
+      <main style={{ padding: "40px", maxWidth: "400px", margin: "0 auto", fontFamily: "sans-serif", textAlign: "center" }}>
+        <h1 style={{ marginBottom: "30px" }}>🏠 在庫マネージャー</h1>
+        <p style={{ color: "#555", marginBottom: "20px" }}>ご利用にはログインが必要です</p>
+        <button
+          onClick={login}
+          style={{
+            padding: "12px 24px", backgroundColor: "#0070f3", color: "white",
+            border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "bold", fontSize: "16px"
+          }}
+        >
+          Googleでログイン
+        </button>
+      </main>
+    );
+  }
+
   return (
     <main style={{ padding: "40px", maxWidth: "600px", margin: "0 auto", fontFamily: "sans-serif" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+        <span style={{ color: "#555", fontSize: "14px" }}>{user.email}</span>
+        <button
+          onClick={logout}
+          style={{
+            padding: "6px 14px", borderRadius: "6px", border: "1px solid #ddd",
+            backgroundColor: "transparent", color: "#555", cursor: "pointer"
+          }}
+        >
+          ログアウト
+        </button>
+      </div>
       <h1 style={{ textAlign: "center", marginBottom: "30px" }}>🏠 在庫マネージャー</h1>
 
       {/* --- アイテム追加フォーム --- */}
