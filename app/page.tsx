@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { db, auth, googleProvider } from "@/lib/firebase";
 import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc } from "firebase/firestore";
-import { onAuthStateChanged, signInWithPopup, signOut, User } from "firebase/auth";
+import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, User } from "firebase/auth";
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
@@ -17,8 +17,16 @@ export default function Home() {
 
   const categories = ["キッチン", "掃除", "化粧品", "ベビー", "食品"];
 
-  // 0. 認証状態を監視
+  // 許可するメールアドレス一覧
+  const allowedEmails = [
+    "hyontarou1@gmail.com",
+    "momo16lion@gmail.com",
+  ];
+  const isAllowed = user?.email ? allowedEmails.includes(user.email) : false;
+
+  // 0. 認証状態を監視 + リダイレクト結果を受け取る
   useEffect(() => {
+    getRedirectResult(auth).catch((err) => console.error(err));
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setAuthLoading(false);
@@ -26,10 +34,15 @@ export default function Home() {
     return () => unsub();
   }, []);
 
-  // ログイン
+  // ログイン（スマホはリダイレクト、PCはポップアップ）
   const login = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        await signInWithRedirect(auth, googleProvider);
+      } else {
+        await signInWithPopup(auth, googleProvider);
+      }
     } catch (err) {
       console.error(err);
       alert("ログインに失敗しました");
@@ -41,9 +54,9 @@ export default function Home() {
     await signOut(auth);
   };
 
-  // 1. データのリアルタイム取得（ログイン後のみ）
+  // 1. データのリアルタイム取得（許可されたユーザーのみ）
   useEffect(() => {
-    if (!user) {
+    if (!user || !isAllowed) {
       setItems([]);
       return;
     }
@@ -55,7 +68,7 @@ export default function Home() {
       setItems(data);
     });
     return () => unsub();
-  }, [user]);
+  }, [user, isAllowed]);
 
   // 2. 新しいアイテムをFirebaseに追加
   const addItem = async (e: React.FormEvent) => {
@@ -139,6 +152,30 @@ export default function Home() {
           }}
         >
           Googleでログイン
+        </button>
+      </main>
+    );
+  }
+
+  // --- ログイン済みだが未許可のユーザー ---
+  if (!isAllowed) {
+    return (
+      <main style={{ padding: "40px", maxWidth: "400px", margin: "0 auto", fontFamily: "sans-serif", textAlign: "center" }}>
+        <h1 style={{ marginBottom: "20px" }}>🚫 アクセス権限がありません</h1>
+        <p style={{ color: "#555", marginBottom: "10px" }}>
+          このアカウント（{user.email}）は利用を許可されていません。
+        </p>
+        <p style={{ color: "#555", marginBottom: "20px" }}>
+          管理者にお問い合わせください。
+        </p>
+        <button
+          onClick={logout}
+          style={{
+            padding: "10px 20px", borderRadius: "6px", border: "1px solid #ddd",
+            backgroundColor: "transparent", color: "#555", cursor: "pointer"
+          }}
+        >
+          ログアウト
         </button>
       </main>
     );
